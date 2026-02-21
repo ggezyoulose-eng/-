@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rewrite the Roots</title>
+    <style>
+        :root { --bg: #050508; --cyan: #00f2ff; --purple: #bc00ff; --red: #ff3333; --text: #f0f0f0; }
+        body { background: var(--bg); color: var(--text); font-family: sans-serif; margin: 0; display: flex; justify-content: center; overflow-x: hidden; }
+        #game-container { width: 100%; max-width: 500px; min-height: 100vh; border-left: 1px solid #333; border-right: 1px solid #333; padding: 20px; box-sizing: border-box; background: rgba(10, 10, 15, 0.9); }
+        
+        .layer { display: none; animation: fadeIn 0.8s ease forwards; }
+        .active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* 画面揺れ演出 */
+        @keyframes shake {
+            0% { transform: translate(0,0); }
+            25% { transform: translate(2px, 2px); }
+            50% { transform: translate(-2px, -2px); }
+            75% { transform: translate(2px, -2px); }
+            100% { transform: translate(0,0); }
+        }
+        .shaking { animation: shake 0.1s infinite; }
+
+        /* キャラクターエリア */
+        .char-box { display: flex; align-items: flex-start; gap: 15px; margin-bottom: 20px; }
+        .avatar-container { display: flex; flex-direction: column; align-items: center; flex-shrink: 0; }
+        
+        /* ？？？の専用アイコン設定 */
+        .avatar { 
+            width: 75px; height: 75px; border-radius: 50%; border: 3px solid var(--purple); 
+            background: #000; margin-bottom: 8px; box-shadow: 0 0 15px rgba(188, 0, 255, 0.6); 
+            overflow: hidden; display: flex; justify-content: center; position: relative;
+        }
+        .avatar img { width: 200%; height: auto; position: absolute; top: 15%; } /* 顔をズームアップ */
+
+        .char-name { color: var(--cyan); font-weight: bold; font-size: 1.1rem; letter-spacing: 2px; text-shadow: 0 0 5px var(--cyan); }
+        .speech-bubble { background: rgba(255, 255, 255, 0.05); border: 1px solid #444; padding: 18px; border-radius: 15px; font-size: 0.95rem; line-height: 1.7; flex: 1; }
+
+        /* ボタンデザイン */
+        .choice-btn { width: 100%; padding: 15px; margin: 10px 0; background: rgba(0,0,0,0.5); border: 1px solid var(--cyan); color: var(--cyan); border-radius: 8px; cursor: pointer; font-size: 1rem; transition: 0.3s; }
+        .choice-btn:hover { background: rgba(0, 242, 255, 0.1); box-shadow: 0 0 15px var(--cyan); }
+        .choice-btn.danger { border-color: var(--red); color: var(--red); }
+        .choice-btn.danger:hover { background: rgba(255, 51, 51, 0.1); box-shadow: 0 0 15px var(--red); }
+
+        .card { background: #111; border: 1px solid #333; padding: 15px; border-radius: 10px; margin-bottom: 12px; cursor: pointer; transition: 0.3s; }
+        .card:hover { border-color: var(--purple); background: #1a1a1a; box-shadow: 0 0 10px var(--purple); }
+        .status-msg { font-size: 0.8rem; color: var(--cyan); margin-top: 8px; display: block; border-top: 1px solid #333; padding-top: 5px; opacity: 0.8; }
+        
+        #scenario-text { background: rgba(255,255,255,0.03); padding: 25px; border-radius: 12px; margin: 20px 0; border-left: 4px solid var(--cyan); line-height: 1.8; font-size: 1rem; }
+        
+        /* タイピング画面 */
+        #layer-typing { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 100; display: none; justify-content: center; align-items: center; padding: 40px; box-sizing: border-box; }
+        #typing-content { color: var(--red); font-size: 1.1rem; line-height: 2.2; white-space: pre-wrap; font-family: 'Courier New', Courier, monospace; text-shadow: 0 0 10px rgba(255, 0, 0, 0.5); }
+    </style>
+</head>
+<body id="main-body">
+
+<audio id="bgm-hope" loop src="MusMus-BGM-178.mp3"></audio>
+<audio id="bgm-despair" loop src="MusMus-BGM-096.mp3"></audio>
+
+<div id="game-container">
+    <div id="layer-prologue" class="layer active">
+        <div class="char-box">
+            <div class="avatar-container">
+                <div class="avatar"><img src="IMG_7796.jpeg" alt="？？？"></div>
+                <div class="char-name">？？？</div>
+            </div>
+            <div class="speech-bubble">
+                …来たか。ここが何の場所か、お前はもう知っているはずだ。<br><br>
+                他人の過去を弄り、その先に何があるというのか。…まあいい。選べ。
+            </div>
+        </div>
+        <button class="choice-btn" onclick="startGame()">記憶の海へ介入する</button>
+    </div>
+
+    <div id="layer-main" class="layer">
+        <h2 style="font-weight: 200; border-bottom: 1px solid #333; padding-bottom: 10px; color: var(--cyan);">介入対象を選択してください</h2>
+        <div id="char-list"></div>
+    </div>
+
+    <div id="layer-npc" class="layer">
+        <div class="char-box">
+            <div class="avatar-container">
+                <div class="avatar"><img src="IMG_7796.jpeg" alt="？？？"></div>
+                <div class="char-name">？？？</div>
+            </div>
+            <div class="speech-bubble" id="npc-text"></div>
+        </div>
+        <button class="choice-btn" onclick="backToMain()">意識を浮上させる</button>
+    </div>
+
+    <div id="layer-edit" class="layer">
+        <h3 id="edit-title" style="color: var(--purple);">記憶の深層</h3>
+        <p id="scenario-text"></p>
+        <div id="edit-choices"></div>
+    </div>
+</div>
+
+<div id="layer-typing">
+    <div id="typing-content"></div>
+</div>
+
+<script>
+    let npcState = 0;
+    let lockedTarget = null; 
+    const clearedFlags = { kaito: false, lin: false, xeno: false };
+
+    // BGMの制御ロジック
+    function switchBGM(type) {
+        const hope = document.getElementById('bgm-hope');
+        const despair = document.getElementById('bgm-despair');
+        hope.pause();
+        despair.pause();
+        if (type === 'hope') hope.play().catch(e => console.log("再生に失敗しました"));
+        if (type === 'despair') despair.play().catch(e => console.log("再生に失敗しました"));
+    }
+
+    function startGame() {
+        switchBGM('hope'); // 178再生開始
+        backToMain();
+    }
+
+    const characters = {
+        kaito: { name: "カイト", phase: 1, status: "",
+            story: {
+                1: { text: "【過去】溺れる親友。差し伸べた手はあと少し届かない。周囲の視線が冷たく突き刺さる。", 
+                      choices: [{ text: "冷たい水に飛び込み、彼の手を掴む", next: 2 }, { text: "恐怖で立ち尽くし、助けを呼ぶ", next: "dark" }] },
+                2: { text: "【現在】戦場。親友が囮になろうとしている。「俺の命でお前が生きろ」と彼は微笑んだ。", 
+                      choices: [{ text: "彼の背中を追い、運命を共にする", next: "clear" }, { text: "彼の意志を尊重し、涙を飲んで撤退する", next: "dark" }] }
+            }
+        },
+        lin: { name: "リン", phase: 1, status: "",
+            story: {
+                1: { text: "【過去】ステージ。親の「お前は出来損ないだ」という幻聴が耳を離れない。", 
+                      choices: [{ text: "幻聴をかき消すように、魂の底から歌う", next: 2 }, { text: "震える声で歌い、途中で逃げ出す", next: "dark" }] },
+                2: { text: "【現在】大舞台。喉を傷め、声が出ない絶望の淵。観客は嘲笑に変わろうとしている。", 
+                      choices: [{ text: "声なき叫びで、想いを伝え続ける", next: "clear" }, { text: "マイクを置き、静かに舞台を去る", next: "dark" }] }
+            }
+        },
+        xeno: { name: "ゼノ", phase: 1, status: "",
+            story: {
+                1: { text: "【過去】少年時代。妹のためのパン。飢えた子供が、狂気的な目でそのパンを狙っている。", 
+                      choices: [{ text: "パンを分け合い、共に生きる道を選ぶ", next: 2 }, { text: "パンを守るため、その子を力で叩き伏せる", next: "dark" }] },
+                2: { text: "【現在】全財産を失う危機の裏で、部下が裏切りを告白した。復讐か、許しか。", 
+                      choices: [{ text: "部下の真意を信じ、全てを再建する", next: "clear" }, { text: "部下を切り捨て、一人の孤独な富豪に戻る", next: "dark" }] }
+            }
+        },
+        unknown: { name: "？？？", phase: 1,
+            story: {
+                1: { text: "【最果ての地獄】愛する人が瓦礫の下で、あなたの名を呼んでいる。指先が触れた瞬間、爆鳴と共に全てが白く染まった。", 
+                      choices: [{ text: "手を離さないと誓う", next: "bad" }, { text: "瓦礫の下へ潜り込む", next: "bad" }, { text: "神に慈悲を乞う", next: "bad" }] }
+            }
+        }
+    };
+
+    function renderList() {
+        const content = document.getElementById('char-list');
+        content.innerHTML = "";
+        if (Object.keys(clearedFlags).every(k => clearedFlags[k])) {
+            content.innerHTML = `<button class="choice-btn danger" onclick="startEdit('unknown')">？？？の最深部へ介入する</button>`;
+            return;
+        }
+        const keys = lockedTarget ? [lockedTarget] : Object.keys(characters).filter(k => k !== 'unknown');
+        keys.forEach(key => {
+            const char = characters[key];
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.innerHTML = `<strong style="font-size:1.1rem; color: #fff;">${char.name}</strong>${char.status ? `<span class="status-msg">${char.status}</span>` : ''}`;
+            card.onclick = () => startEdit(key);
+            content.appendChild(card);
+        });
+    }
+
+    function startEdit(key) {
+        if (key === 'unknown') switchBGM('despair'); // 096再生開始
+        const char = characters[key];
+        const data = char.story[char.phase];
+        document.querySelectorAll('.layer').forEach(l => l.classList.remove('active'));
+        document.getElementById('layer-edit').classList.add('active');
+        document.getElementById('scenario-text').innerText = data.text;
+        const choiceBox = document.getElementById('edit-choices');
+        choiceBox.innerHTML = "";
+        data.choices.forEach(c => {
+            const btn = document.createElement('button');
+            btn.className = "choice-btn";
+            btn.innerText = c.text;
+            btn.onclick = () => {
+                if (key === 'unknown') {
+                    startTypingEnding();
+                } else if (c.next === 'dark') {
+                    showDarkEnd();
+                } else if (c.next === 'clear') {
+                    clearedFlags[key] = true; lockedTarget = null; delete characters[key]; showNPCLayer();
+                } else {
+                    char.phase = c.next; char.status = "（過去のトラウマを一時的に消去した）";
+                    lockedTarget = key; backToMain();
+                }
+            };
+            choiceBox.appendChild(btn);
+        });
+    }
+
+    function showDarkEnd() {
+        switchBGM('despair'); // 096
+        document.getElementById('scenario-text').innerText = "【闇落ちエンド】\n救済は失敗した。彼の心は憎悪と絶望に染まり、修復不可能なほどに崩壊した…。";
+        document.getElementById('edit-choices').innerHTML = `<button class="choice-btn danger" onclick="location.reload()">再試行する</button>`;
+    }
+
+    function showNPCLayer() {
+        const npcDialogues = [
+            "一人、救いの糸を繋いだか。…だが、その糸はいつかお前自身の首を絞めるだろう。",
+            "二人目か。無意味な善行だ。書き換えた先にあるのは、より深い絶望に過ぎないというのに。",
+            "三人全てを…？ 馬鹿な。なぜ、俺が数千回繰り返しても届かなかった結末に、お前は届く…？",
+            "…もう、見ていられない。私の心臓を止めてくれ。この地獄の記憶を、お前の手で。"
+        ];
+        document.querySelectorAll('.layer').forEach(l => l.classList.remove('active'));
+        document.getElementById('layer-npc').classList.add('active');
+        document.getElementById('npc-text').innerText = npcDialogues[npcState];
+        npcState++;
+    }
+
+    function backToMain() {
+        document.querySelectorAll('.layer').forEach(l => l.classList.remove('active'));
+        document.getElementById('layer-main').classList.add('active');
+        renderList();
+    }
+
+    function startTypingEnding() {
+        const typingLayer = document.getElementById('layer-typing');
+        const typingContent = document.getElementById('typing-content');
+        const body = document.getElementById('main-body');
+        typingLayer.style.display = 'flex';
+        
+        const fullText = "「…ああ、まただ。何度世界を編み直しても、この指先だけはあいつに届かない。\n俺は、いつまでこの『無意味な救済』を繰り返せばいい…？」\n\n「また救えなかった。俺はまた、あいつを救うことができなかった。」";
+        let i = 0;
+        
+        function type() {
+            if (i < fullText.length) {
+                typingContent.innerText += fullText.charAt(i);
+                body.classList.add('shaking');
+                setTimeout(() => body.classList.remove('shaking'), 50);
+                i++;
+                setTimeout(type, 130);
+            } else {
+                setTimeout(() => {
+                    const btn = document.createElement('button');
+                    btn.className = "choice-btn danger";
+                    btn.innerText = "もう一度、救済を試みる";
+                    btn.onclick = () => location.reload();
+                    typingContent.appendChild(document.createElement('br'));
+                    typingContent.appendChild(btn);
+                }, 1000);
+            }
+        }
+        type();
+    }
+
+    renderList();
+</script>
+</body>
+</html>
